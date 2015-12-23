@@ -1,0 +1,146 @@
+---
+title: "Coursera Practical Machine Learning - Excercise Prediction"
+author: "Chris Dolan"
+date: "December 16, 2015"
+output: html_document
+---
+
+## Introduction
+
+The following information was provided as a guide for this project:
+
+#### Background
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset). 
+
+
+
+#### Data 
+
+
+The training data for this project are available here: 
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here: 
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+ 
+
+#### Objective
+
+The goal of the project is to predict the manner in which an excercise was performed. To do this, Machine Learning techniques were used on a training set, and used to predict information about a testing set. We will be predicting on the variable "classe" in the data.
+
+## Data Processing
+
+First the data is downloaded via the URL given above. During the analysis it was noted that several values in the data can be considered "NA", so these are now passed to the function reading in the data to help with clean up and speed the project up.
+
+```{r, warning=FALSE}
+library(caret)
+library(randomForest)
+library(doParallel)
+trainlink <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+testlink <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+training <- read.csv(url(trainlink), na.strings=c("NA","#DIV/0!",""))
+test_grade<- read.csv(url(testlink), na.strings=c("NA","#DIV/0!",""))
+```
+
+A quick look at the data to see what we are dealing with, the output is hidden here due to the amount of space it takes up.
+
+```{r, results= "hide"}
+dim(training)
+summary(training)
+names(training)
+```
+
+It is easy to see that the first few columns have nothing to do with the movement we are predicting, so they are removed.
+
+```{r}
+training <- training[,-c(1:7)]
+test_grade <- test_grade[,-c(1:7)]
+training$classe <- factor(training$classe)
+```
+
+Next we check for NA values to help pare down the data set we are using. To see if this is even possible I want to know how many NA values we have.
+
+```{r}
+sum(is.na(training))
+```
+
+To help decide which columns to remove, I first looked in to which columns had no NA observations. This eliminated many of the columns, leaving a little over 50 predictor values left to use during modeling.
+
+```{r}
+notna <- sapply(training, function(x)all(!is.na(x)))
+training <- training[,notna]
+test_grade <- test_grade[,notna]
+```
+
+I also investigated removing additional variables based on the near zero variance function. To compare the two models, I created another training set and test grading set.
+
+```{r, eval=FALSE}
+removecol <- nearZeroVar(training, saveMetrics=TRUE)
+training2 <- training[,!removecol$nzv== TRUE]
+
+test_grade2 <- test_grade[,!removecol$nzv== TRUE]
+```
+
+We then split our training data in to seperate training and testing sets. The testing set that was downloaded above is used to grade the project, but we need a testing set to test our model on before grading. 
+
+```{r, warning= "hide"}
+inTrain = createDataPartition(y=training$classe, p=0.6, list=FALSE)
+trainset = training[inTrain,]
+testset= training[-inTrain,]
+```
+
+## Model Building
+
+Now that the data has been cleaned, we will build a random forest model to predict the classe of each observation. The first model was built using the data set that contained the 50+ completed columns. By creating the control variable, we are able to use cross validation in the model, in this case 6-fold. I also experimented with the repeats valiable within the cross validation controls. I found that adding aditional iterations led to little increase in accuracy while greatly increasing computation time.
+
+```{r, cache=TRUE}
+cl <- makeCluster(detectCores())
+registerDoParallel(cl)
+controls <- trainControl(method="cv", number = 6)
+fitrf = train(classe ~ ., method = "rf", data=trainset, trControl = controls, allowParallel = TRUE)
+pred <- predict(fitrf, testset)
+stopCluster(cl)
+```
+
+The model was then used to predict the classe of the test set. It is easily seen that the model has an accuracy near 99%
+
+```{r}
+confusionMatrix(pred, testset$classe)
+```
+
+The second model is also a random forest, but uses fewer predictors by eliminating those with near zero variance. Note: this model took much longer to run and offered lower or equal accuracy, so while the code is shown below to build and evaluate the model, the code was not ran as part of the report.
+
+```{r, eval = FALSE}
+fitrf = train(classe ~ ., method = "rf", data=trainset, trControl = controls)
+pred <- predict(fitrf, testset)
+fitrf
+```
+
+```{r, eval = FALSE}
+confusionMatrix(pred, testset$classe)
+```
+
+The out of sample error for the best model is shown below
+
+```{r}
+outsamerr <- (1 - as.numeric(confusionMatrix(testset$classe, pred)$overall[1]))
+outsamerr
+```
+
+### Graded Predictions
+
+This model was then used to predict against the 20 test cases that would be graded, caled test_grade here. The model was able to predict all 20 observations correctly. In case this project is used again in the future, the actual predicitions for the graded test set are not shown here.
+
+#### Reference
+It was interesting to note that the choosen model was able to obtain the highest accuracy without using all of the predictors. Based on this quick plot it appears roughly half of the predictors were used.
+
+```{r, echo = FALSE}
+plot(fitrf)
+```
+
+The data for this project come from : http://groupware.les.inf.puc-rio.br/har. 
+
