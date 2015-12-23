@@ -2,7 +2,9 @@
 title: "Coursera Practical Machine Learning - Excercise Prediction"
 author: "Chris Dolan"
 date: "December 16, 2015"
-output: html_document
+output: 
+  html_document: 
+    keep_md: yes
 ---
 
 ## Introduction
